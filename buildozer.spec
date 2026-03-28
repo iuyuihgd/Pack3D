@@ -19,7 +19,7 @@ android.allow_backup = True
 android.use_aapt2 = True
 android.permissions = INTERNET
 
-# 修复 autoconf 问题的配置
+# 关键修复配置：解决 autoconf 错误
 android.whitelist = m4_allow_all.ac
 android.p4a_hooks = hooks.py
 
@@ -29,7 +29,3 @@ android.logcat_filters = *:S python:D
 
 # 日志级别
 log_level = 2
-
-# 构建目录
-build.dir = bin
-bin.dir = bin
