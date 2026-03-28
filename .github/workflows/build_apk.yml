@@ -79,7 +79,7 @@ jobs:
           echo "🐍 安装 Python 工具..."
           python -m pip install --upgrade pip
           pip install --upgrade setuptools wheel cython==0.29.33 virtualenv
-          pip install buildozer
+          pip install "buildozer<1.6.0"
           
           echo "✅ Python 工具安装完成"
 
@@ -104,20 +104,14 @@ jobs:
           # 检查配置文件
           echo "📄 检查配置文件:"
           ls -la buildozer.spec
-          echo "=== buildozer.spec 内容 ==="
-          head -30 buildozer.spec
-          echo "=== 结束 ==="
           
           # 显示 Buildozer 版本
           echo "🔧 Buildozer 版本:"
           buildozer --version
           
-          # 清理并构建
-          echo "🔨 清理之前的构建..."
-          buildozer android clean
-          
           echo "🔨 开始构建调试版 APK..."
-          # 自动回答所有许可证问题并详细输出
+          
+          # 使用详细模式构建，不使用clean参数
           yes | buildozer -v android debug
           
           # 检查构建结果
@@ -131,9 +125,24 @@ jobs:
             echo "文件大小: $(du -h "$APK_FILE" | cut -f1)"
           else
             echo "❌ 未找到 APK 文件，构建可能失败"
-            echo "检查 .buildozer 目录:"
-            ls -la .buildozer/ || echo ".buildozer 目录不存在"
-            exit 1
+            echo "尝试清理后重新构建..."
+            
+            # 手动清理构建目录
+            rm -rf .buildozer/android/platform/build-* 2>/dev/null || true
+            rm -rf .buildozer/android/app 2>/dev/null || true
+            
+            # 第二次尝试构建
+            echo "🔨 第二次尝试构建..."
+            yes | buildozer -v android debug
+            
+            # 再次检查结果
+            if ls bin/*.apk 1>/dev/null 2>&1; then
+              echo "✅ 第二次构建成功！"
+              ls -lh bin/*.apk
+            else
+              echo "❌ 构建失败，请查看上方错误信息"
+              exit 1
+            fi
           fi
 
       - name: 上传 APK 文件
