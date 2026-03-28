@@ -105,14 +105,8 @@ jobs:
           echo "📄 检查配置文件:"
           ls -la buildozer.spec
           echo "=== buildozer.spec 内容 ==="
-          cat buildozer.spec
+          head -30 buildozer.spec
           echo "=== 结束 ==="
-          
-          # 初始化 Buildozer（如果未初始化）
-          if [ ! -f ".buildozer/config.ini" ]; then
-            echo "⚙️ 初始化 Buildozer..."
-            buildozer init
-          fi
           
           # 显示 Buildozer 版本
           echo "🔧 Buildozer 版本:"
@@ -138,9 +132,7 @@ jobs:
           else
             echo "❌ 未找到 APK 文件，构建可能失败"
             echo "检查 .buildozer 目录:"
-            ls -la .buildozer/
-            echo "检查 bin 目录:"
-            ls -la bin/ 2>/dev/null || echo "bin 目录不存在"
+            ls -la .buildozer/ || echo ".buildozer 目录不存在"
             exit 1
           fi
 
