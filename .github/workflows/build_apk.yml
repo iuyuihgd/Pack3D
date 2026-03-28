@@ -76,7 +76,59 @@ jobs:
               libpng-dev
           
           echo "✅ 系统依赖安装完成"
-
+      - name: 🔧 手动安装 Android SDK 命令行工具 (CLI Tools)
+        run: |
+          echo "正在手动安装 Android SDK 命令行工具..."
+          
+          # 1. 设置Android SDK路径变量
+          SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
+          mkdir -p "$SDK_ROOT"
+          
+          # 2. 下载最新的命令行工具包 (commandlinetools)
+          # 注意：URL中的"11076708"是版本号，如需最新版可查阅Google官方文档
+          CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
+          CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
+          echo "下载命令行工具包: $CD_TOOLS_URL"
+          
+          wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
+          
+          # 3. 解压到SDK目录的正确位置
+          # SDK目录结构要求 tools/ 文件夹在根目录
+          unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/cmdline-tools"
+          mv "/tmp/cmdline-tools/cmdline-tools" "$SDK_ROOT/"
+          
+          # 4. 创建符合sdkmanager预期的tools目录结构
+          # 某些版本需要将cmdline-tools移动并重命名为tools
+          mkdir -p "$SDK_ROOT/tools"
+          cp -r "$SDK_ROOT/cmdline-tools/"* "$SDK_ROOT/tools/" || true
+          
+          # 5. 预接受所有许可证 (关键！)
+          mkdir -p "$SDK_ROOT/licenses"
+          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
+          
+          # 6. 验证安装
+          echo "Android SDK工具安装完成，验证sdkmanager..."
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          export PATH="$ANDROID_SDK_ROOT/tools/bin:$PATH"
+          
+          # 检查sdkmanager是否存在
+          if [ -f "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" ]; then
+            echo "✅ sdkmanager 已正确安装"
+            # 列出已安装项目（可选）
+            "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" --list | head -20
+          else
+            echo "尝试备用路径..."
+            # 备用路径：某些版本结构不同
+            if [ -f "$ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager" ]; then
+              ln -s "$ANDROID_SDK_ROOT/cmdline-tools" "$ANDROID_SDK_ROOT/tools"
+              echo "✅ sdkmanager 在备用路径找到并已链接"
+            else
+              echo "❌ sdkmanager 仍未找到，请检查下载和解压过程"
+              ls -la "$SDK_ROOT/"
+              exit 1
+            fi
+          fi
       - name: 安装 Python 构建工具
         run: |
           echo "🐍 安装 Python 构建工具..."
