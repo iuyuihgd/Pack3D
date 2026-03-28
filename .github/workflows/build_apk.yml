@@ -16,13 +16,29 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install core dependencies
+      - name: Install system dependencies (包含aidl)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev
+          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev android-sdk-build-tools
           pip install buildozer Cython==0.29.33
 
-      - name: Build with Buildozer (无空格路径)
+      - name: Pre-accept Android SDK licenses (绕过交互)
+        run: |
+          # 提前创建许可证目录和文件，避免 Accept? (y/N) 卡住
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f7a934afd4a71a9114a34a9a360" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "8933bad15af1f7d3bf55ebb7dfa70d" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+          echo "c9e4cdac1c000000" > ~/.buildozer/android/platform/android-sdk/licenses/android-googletv-license
+          echo "33b6a2b8a2a2b2a2" > ~/.buildozer/android/platform/android-sdk/licenses/mips-android-license
+          echo "d56f5ecf4e2f4d24" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license-5935f95b
+
+      - name: Build with Buildozer (真实环境验证)
         run: |
           cd $GITHUB_WORKSPACE
           buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pack3D-APK
+          path: bin/*.apk
