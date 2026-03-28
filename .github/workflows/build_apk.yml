@@ -18,28 +18,6 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: 创建构建补丁文件
-        run: |
-          # 创建解决 autoconf 宏检查错误的补丁文件
-          cat > m4_allow_all.ac << 'EOF'
-          # 允许所有宏通过 autoconf 检查
-          m4_pattern_allow([^.*$])
-          EOF
-          
-          # 创建构建钩子文件
-          cat > hooks.py << 'EOF'
-          from pythonforandroid.toolchain import logger
-          
-          def pre_build(dist, *args, **kwargs):
-              logger.info("开始构建 Pack3D APK...")
-              logger.info(f"目标架构: {dist.archs}")
-          
-          def post_build(dist, *args, **kwargs):
-              logger.info("Pack3D APK 构建完成！")
-          EOF
-          
-          echo "✅ 补丁文件创建完成"
-
       - name: 安装系统构建依赖
         run: |
           echo "📦 开始安装系统构建依赖..."
@@ -73,42 +51,56 @@ jobs:
               libxml2-dev \
               libxslt1-dev \
               libjpeg-dev \
-              libpng-dev
+              libpng-dev \
+              libsqlite3-0
           
           echo "✅ 系统依赖安装完成"
 
-      - name: 🔧 安装 Android SDK 命令行工具
+      - name: 🔧 设置完整的 Android 构建环境
         run: |
-          echo "安装 Android SDK 命令行工具..."
+          echo "设置 Android 构建环境..."
           SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
+          
+          # 1. 安装命令行工具
           mkdir -p "$SDK_ROOT"
-
-          # 下载命令行工具包 (关键修正：使用完整URL)
           CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
           CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
-          echo "正在从以下地址下载: $CD_TOOLS_URL"
+          echo "下载命令行工具..."
           wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
-
-          # 解压到正确路径：cmdline-tools/latest/
-          echo "解压并安装到: $SDK_ROOT/cmdline-tools/latest/"
+          
+          echo "解压到: $SDK_ROOT/cmdline-tools/latest/"
           unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
           mkdir -p "$SDK_ROOT/cmdline-tools"
           mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
-
-          # 预接受许可证
-          mkdir -p "$SDK_ROOT/licenses"
-          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
-
-          # 验证安装
+          
+          # 2. 将SDK工具路径设置为持久化环境变量
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          
+          # 3. 安装构建所需的SDK组件 (根据您的 buildozer.spec 配置)
+          echo "安装必需的 Android SDK 组件..."
+          # 先确保sdkmanager在当前步骤内可用
           export ANDROID_SDK_ROOT="$SDK_ROOT"
           export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            echo "✅ sdkmanager 已成功安装于标准路径"
-          else
-            echo "❌ sdkmanager 未在预期路径找到，安装失败。"
-            exit 1
-          fi
+          
+          # 接受所有SDK许可证 (非交互模式)
+          yes | sdkmanager --licenses > /dev/null 2>&1 || echo "许可证处理完成"
+          
+          # 根据 buildozer.spec 配置安装对应版本
+          # android.api = 33, android.build_tools = 34.0.0
+          echo "安装 Android SDK Platform 33..."
+          sdkmanager "platforms;android-33"
+          
+          echo "安装 Android Build Tools 34.0.0..."
+          sdkmanager "build-tools;34.0.0"
+          
+          echo "安装其他必需工具..."
+          sdkmanager "platform-tools" "patcher;v4" "cmdline-tools;latest"
+          
+          echo "✅ Android SDK 环境设置完成。"
+          echo "已安装的组件:"
+          sdkmanager --list_installed | grep -E "platform|build-tools"
 
       - name: 安装 Python 构建工具
         run: |
@@ -121,7 +113,48 @@ jobs:
           # 安装指定版本的 Buildozer
           pip install "buildozer<1.6.0"
           
+          # 安装 Kivy 相关依赖
+          pip install kivy kivymd
+          
           echo "✅ Python 工具安装完成"
+
+      - name: 配置 Buildozer
+        run: |
+          echo "⚙️ 配置 Buildozer 环境..."
+          
+          # 初始化 Buildozer
+          buildozer init || true
+          
+          # 备份原有的 spec 文件
+          if [ -f "buildozer.spec" ]; then
+            cp buildozer.spec buildozer.spec.backup
+            echo "已备份原始 buildozer.spec 文件"
+          fi
+          
+          # 确保 hooks.py 和 m4_allow_all.ac 存在
+          if [ ! -f "hooks.py" ]; then
+            echo "创建默认 hooks.py..."
+            cat > hooks.py << 'EOF'
+          from pythonforandroid.toolchain import logger
+          
+          def pre_build(dist, *args, **kwargs):
+              logger.info("开始构建 Pack3D APK...")
+              logger.info(f"目标架构: {dist.archs}")
+          
+          def post_build(dist, *args, **kwargs):
+              logger.info("Pack3D APK 构建完成！")
+          EOF
+          fi
+          
+          if [ ! -f "m4_allow_all.ac" ]; then
+            echo "创建 m4_allow_all.ac..."
+            cat > m4_allow_all.ac << 'EOF'
+          # 允许所有宏通过 autoconf 检查
+          m4_pattern_allow([^.*$])
+          EOF
+          fi
+          
+          echo "✅ Buildozer 配置完成"
 
       - name: 清理旧的构建缓存
         run: |
@@ -134,20 +167,29 @@ jobs:
           echo "✅ 缓存清理完成"
 
       - name: 构建 APK
+        env:
+          # 设置 Buildozer 环境变量
+          BUILD_NAME: "Pack3D"
+          P4A_RELEASE_KEYSTORE_PASSWD: ${{ secrets.KEYSTORE_PASSWORD }}
+          P4A_RELEASE_KEYALIAS_PASSWD: ${{ secrets.KEY_ALIAS_PASSWORD }}
         run: |
           echo "🚀 开始构建 Pack3D APK..."
           cd $GITHUB_WORKSPACE
           
-          # 设置环境变量 (使用新版SDK工具路径)
-          export ANDROID_SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-          export PATH="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${PATH}"
+          # 环境变量 ANDROID_SDK_ROOT 和 PATH 已由前面步骤设置
+          echo "当前 ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          echo "当前 PATH 包含的sdkmanager路径:"
+          echo "$PATH" | tr ':' '\n' | grep sdk
           
-          # 执行构建（关键：添加 --accept-license 参数自动接受许可证）
+          # 显示 Buildozer 配置摘要
+          echo "=== Buildozer 配置摘要 ==="
+          grep -E "^(title|package\.|version|requirements|android\.)" buildozer.spec | head -20
+          
           echo "开始时间: $(date)"
-          echo "提示：首次构建需下载大量依赖（SDK、NDK等），约需20-40分钟，请耐心等待..."
+          echo "提示：首次构建需下载 NDK 和其他依赖，约需20-40分钟，请耐心等待..."
           
-          # 设置 45 分钟超时，并传递自动接受许可证的参数
-          timeout 2700 buildozer -v android debug -- --accept-license 2>&1 | tee build_output.log
+          # 执行构建 (启用详细日志)
+          timeout 3600 buildozer -v android debug 2>&1 | tee build_output.log
           
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
           echo "构建结束时间: $(date)"
@@ -163,7 +205,9 @@ jobs:
             if [ -n "$APK_FILES" ]; then
               echo "✅ 找到 APK 文件:"
               echo "$APK_FILES" | while read apk; do
-                echo "  - $apk ($(du -h "$apk" | cut -f1))"
+                apk_name=$(basename "$apk")
+                apk_size=$(du -h "$apk" | cut -f1)
+                echo "  - $apk_name ($apk_size)"
                 # 确保复制到 bin 目录
                 mkdir -p bin
                 cp "$apk" bin/
@@ -174,23 +218,34 @@ jobs:
               echo "⚠️  构建成功但未找到 .apk 文件"
               echo "正在全项目搜索..."
               find . -name "*.apk" -type f 2>/dev/null
+              exit 1
             fi
             
           elif [ $BUILD_EXIT_CODE -eq 124 ]; then
-            echo "⏰ 构建超时（45分钟）"
+            echo "⏰ 构建超时（60分钟）"
             echo "可能原因:"
             echo "  1. 网络缓慢，依赖下载超时"
-            echo "  2. 首次构建下载量过大"
+            echo "  2. 首次构建下载量过大（NDK约1GB）"
             echo "建议:"
             echo "  1. 检查工作流日志中的下载进度"
-            echo "  2. 可适当增加超时时间"
+            echo "  2. 可适当增加超时时间或使用更快的镜像源"
             exit 1
           else
             echo "❌ Buildozer 构建失败"
-            echo "=== 最后 50 行错误日志 ==="
-            tail -50 build_output.log
+            echo "=== 最后 100 行错误日志 ==="
+            tail -100 build_output.log
             echo "=== 关键错误搜索 ==="
-            grep -n -i "error\|fail\|exception\|404\|not found" build_output.log | head -20 || echo "未找到关键字"
+            grep -n -i -B2 -A2 "error\|fail\|exception\|404\|not found\|ERROR\|FAILED" build_output.log | head -50 || echo "未找到关键字"
+            
+            # 检查常见的具体错误
+            if grep -q "Could not find a version that satisfies the requirement" build_output.log; then
+              echo "⚠️ 检测到依赖包版本问题，请检查 requirements 配置"
+            fi
+            
+            if grep -q "NDK version" build_output.log; then
+              echo "⚠️ 检测到 NDK 版本问题，请检查 android.ndk 配置"
+            fi
+            
             exit 1
           fi
           
@@ -226,7 +281,17 @@ jobs:
           echo "运行 ID: ${{ github.run_id }}"
           
           if [ -f "build_output.log" ]; then
-            echo "构建日志行数: $(wc -l < build_output.log)"
-            echo "最后关键阶段:"
-            grep -i "building \|compiling \|creating \|success\|error" build_output.log | tail -10 || echo "无法获取构建阶段"
+            BUILD_RESULT=$(tail -5 build_output.log | grep -o "Buildozer.*" || echo "未知")
+            echo "构建结果: $BUILD_RESULT"
+            echo "构建日志大小: $(wc -l < build_output.log) 行"
+            
+            # 检查是否有APK生成
+            if find bin/ -name "*.apk" 2>/dev/null | grep -q .; then
+              APK_COUNT=$(find bin/ -name "*.apk" | wc -l)
+              APK_SIZE=$(du -ch bin/*.apk 2>/dev/null | tail -1 | cut -f1)
+              echo "生成APK数量: $APK_COUNT 个"
+              echo "APK总大小: $APK_SIZE"
+            else
+              echo "警告: 未生成APK文件"
+            fi
           fi
