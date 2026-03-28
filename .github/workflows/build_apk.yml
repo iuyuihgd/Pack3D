@@ -1,29 +1,51 @@
-name: Build Pack3D APK
+[app]
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+# 应用标题
+title = Pack3D
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+# 应用包名
+package.name = pack3d
+package.domain = org.github
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+# 源文件目录和包含的扩展名
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas
 
-      - name: 安装核心依赖 + 系统级 aidl
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev android-sdk-build-tools
-          pip install buildozer Cython==0.29.33
+# 应用版本
+version = 0.1
 
-      - name: 执行 Buildozer（自动接受许可证 + 处理 aidl）
-        run: |
-          cd $GITHUB_WORKSPACE
-          # --accept-eula 让 Buildozer 自动接受所有 SDK 许可证
-          echo "yes" | buildozer -v android debug --accept-eula
+# 依赖包
+requirements = python3,kivy,kivymd,py3dbp,numpy==1.24.3
+
+# Android 配置
+android.api = 33
+android.ndk = 25b
+android.minapi = 21
+android.archs = arm64-v8a,armeabi-v7a
+android.sdk = 24
+android.build_tools = 34.0.0
+android.allow_backup = True
+android.use_aapt2 = True
+
+# 权限
+android.permissions = INTERNET
+
+# 修复 autoconf 问题的关键配置
+android.p4a_whitelist = m4_allow_all.ac
+android.p4a_hooks = hooks.py
+
+# 构建优化
+android.num_processes = 4
+android.logcat_filters = *:S python:D
+
+# 图标和启动画面
+icon.fg = images/icon.png
+presplash.fg = images/presplash.png
+presplash.background = #FFFFFF
+
+# 日志级别
+log_level = 2
+
+# 构建目录
+build.dir = bin
+bin.dir = bin
