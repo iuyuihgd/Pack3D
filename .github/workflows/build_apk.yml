@@ -76,6 +76,7 @@ jobs:
               libpng-dev
           
           echo "✅ 系统依赖安装完成"
+
       - name: 🔧 手动安装 Android SDK 命令行工具 (CLI Tools)
         run: |
           echo "正在手动安装 Android SDK 命令行工具..."
@@ -84,51 +85,41 @@ jobs:
           SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
           mkdir -p "$SDK_ROOT"
           
-          # 2. 下载最新的命令行工具包 (commandlinetools)
-          # 注意：URL中的"11076708"是版本号，如需最新版可查阅Google官方文档
+          # 2. 下载最新的命令行工具包 (commandlinetools) - 关键修复：使用完整URL
           CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
           CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
           echo "下载命令行工具包: $CD_TOOLS_URL"
           
           wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
           
-          # 3. 解压到SDK目录的正确位置
-          # SDK目录结构要求 tools/ 文件夹在根目录
-          unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/cmdline-tools"
-          mv "/tmp/cmdline-tools/cmdline-tools" "$SDK_ROOT/"
+          # 3. 解压并放置到新版SDK要求的特定路径 (关键修复：符合新目录规范)
+          unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
           
-          # 4. 创建符合sdkmanager预期的tools目录结构
-          # 某些版本需要将cmdline-tools移动并重命名为tools
-          mkdir -p "$SDK_ROOT/tools"
-          cp -r "$SDK_ROOT/cmdline-tools/"* "$SDK_ROOT/tools/" || true
+          # 创建目标目录并移动工具到 cmdline-tools/latest/
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           
-          # 5. 预接受所有许可证 (关键！)
+          # 4. 预接受所有许可证 (关键！)
           mkdir -p "$SDK_ROOT/licenses"
           echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
           echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
           
-          # 6. 验证安装
+          # 5. 验证安装
           echo "Android SDK工具安装完成，验证sdkmanager..."
           export ANDROID_SDK_ROOT="$SDK_ROOT"
-          export PATH="$ANDROID_SDK_ROOT/tools/bin:$PATH"
+          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           
           # 检查sdkmanager是否存在
-          if [ -f "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" ]; then
-            echo "✅ sdkmanager 已正确安装"
-            # 列出已安装项目（可选）
-            "$ANDROID_SDK_ROOT/tools/bin/sdkmanager" --list | head -20
+          if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "✅ sdkmanager 已正确安装于标准路径"
+            # 快速验证sdkmanager可运行
+            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list 2>&1 | head -5
           else
-            echo "尝试备用路径..."
-            # 备用路径：某些版本结构不同
-            if [ -f "$ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager" ]; then
-              ln -s "$ANDROID_SDK_ROOT/cmdline-tools" "$ANDROID_SDK_ROOT/tools"
-              echo "✅ sdkmanager 在备用路径找到并已链接"
-            else
-              echo "❌ sdkmanager 仍未找到，请检查下载和解压过程"
-              ls -la "$SDK_ROOT/"
-              exit 1
-            fi
+            echo "❌ sdkmanager 未在预期路径找到。检查目录结构："
+            ls -la "$SDK_ROOT/" && ls -la "$SDK_ROOT/cmdline-tools/" 2>/dev/null
+            exit 1
           fi
+
       - name: 安装 Python 构建工具
         run: |
           echo "🐍 安装 Python 构建工具..."
@@ -152,35 +143,20 @@ jobs:
           mkdir -p .buildozer
           echo "✅ 缓存清理完成"
 
-      - name: 预配置 Android SDK 许可证
-        run: |
-          echo "📝 预配置 Android SDK 许可证..."
-          
-          # 设置 Android SDK 路径
-          export ANDROID_SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-          mkdir -p ${ANDROID_SDK_ROOT}/licenses
-          
-          # 预写入 Android SDK 许可证（关键修复）
-          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ${ANDROID_SDK_ROOT}/licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ${ANDROID_SDK_ROOT}/licenses/android-sdk-license
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> ${ANDROID_SDK_ROOT}/licenses/android-sdk-license
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > ${ANDROID_SDK_ROOT}/licenses/android-sdk-preview-license
-          
-          echo "✅ 许可证预配置完成"
-
       - name: 构建 APK
         run: |
           echo "🚀 开始构建 Pack3D APK..."
           cd $GITHUB_WORKSPACE
           
-          # 设置环境变量
+          # 设置环境变量 (使用新版SDK工具路径)
           export ANDROID_SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-          export PATH="${ANDROID_SDK_ROOT}/tools/bin:${PATH}"
+          export PATH="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${PATH}"
           
-          # 执行构建（关键：添加 --accept-license 参数）
+          # 执行构建（关键：添加 --accept-license 参数自动接受许可证）
           echo "开始时间: $(date)"
+          echo "提示：首次构建需下载大量依赖（SDK、NDK等），约需20-40分钟，请耐心等待..."
           
-          # 设置 45 分钟超时
+          # 设置 45 分钟超时，并传递自动接受许可证的参数
           timeout 2700 buildozer -v android debug -- --accept-license 2>&1 | tee build_output.log
           
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
@@ -198,25 +174,33 @@ jobs:
               echo "✅ 找到 APK 文件:"
               echo "$APK_FILES" | while read apk; do
                 echo "  - $apk ($(du -h "$apk" | cut -f1))"
-                # 复制到 bin 目录
+                # 确保复制到 bin 目录
                 mkdir -p bin
                 cp "$apk" bin/
               done
+              echo "📱 最终 bin/ 目录内容:"
+              ls -lh bin/
             else
               echo "⚠️  构建成功但未找到 .apk 文件"
+              echo "正在全项目搜索..."
+              find . -name "*.apk" -type f 2>/dev/null
             fi
             
           elif [ $BUILD_EXIT_CODE -eq 124 ]; then
             echo "⏰ 构建超时（45分钟）"
+            echo "可能原因:"
+            echo "  1. 网络缓慢，依赖下载超时"
+            echo "  2. 首次构建下载量过大"
             echo "建议:"
-            echo "  1. 检查网络连接"
-            echo "  2. 简化 requirements（如先只保留 python3,kivy）"
-            echo "  3. 增加超时时间"
+            echo "  1. 检查工作流日志中的下载进度"
+            echo "  2. 可适当增加超时时间"
             exit 1
           else
             echo "❌ Buildozer 构建失败"
-            echo "=== 错误摘要 ==="
+            echo "=== 最后 50 行错误日志 ==="
             tail -50 build_output.log
+            echo "=== 关键错误搜索 ==="
+            grep -n -i "error\|fail\|exception\|404\|not found" build_output.log | head -20 || echo "未找到关键字"
             exit 1
           fi
           
@@ -253,6 +237,6 @@ jobs:
           
           if [ -f "build_output.log" ]; then
             echo "构建日志行数: $(wc -l < build_output.log)"
-            echo "最后构建阶段:"
-            grep -i "building\|compiling\|creating\|success\|error" build_output.log | tail -10 || echo "无法获取构建阶段"
+            echo "最后关键阶段:"
+            grep -i "building \|compiling \|creating \|success\|error" build_output.log | tail -10 || echo "无法获取构建阶段"
           fi
