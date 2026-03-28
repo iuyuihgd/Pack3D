@@ -11,7 +11,7 @@ requirements = python3,kivy,kivymd,py3dbp,numpy
 
 android.api = 33
 android.ndk = 25b
-android.archs = arm64-v8a,armeabi-v7a  # 只保留手机架构，x86_64 由 Buildozer 自动处理
+android.archs = arm64-v8a,armeabi-v7a
 
 android.permissions = INTERNET
 android.use_aapt2 = True
