@@ -16,14 +16,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install only core build dependencies
+      - name: 安装核心依赖 + 系统级 aidl
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev
+          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev android-sdk-build-tools
           pip install buildozer Cython==0.29.33
 
-      - name: Build with Buildozer (let it handle ALL SDK/NDK/licenses/aidl)
+      - name: 执行 Buildozer（自动接受许可证 + 处理 aidl）
         run: |
           cd $GITHUB_WORKSPACE
-          # 让 Buildozer 自动处理一切，不干预任何 SDK 相关操作
-          buildozer -v android debug
+          # --accept-eula 让 Buildozer 自动接受所有 SDK 许可证
+          echo "yes" | buildozer -v android debug --accept-eula
