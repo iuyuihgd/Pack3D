@@ -22,7 +22,7 @@ android.api = 33
 android.ndk = 25b
 android.minapi = 21
 android.archs = arm64-v8a,armeabi-v7a
-android.sdk = 24
+# android.sdk 已被弃用，已移除此行
 android.build_tools = 34.0.0
 android.allow_backup = True
 android.use_aapt2 = True
@@ -30,8 +30,8 @@ android.use_aapt2 = True
 # 权限
 android.permissions = INTERNET
 
-# 修复 autoconf 问题的关键配置
-android.p4a_whitelist = m4_allow_all.ac
+# 修复 autoconf 问题的配置 - 使用新参数名
+android.whitelist = m4_allow_all.ac
 android.p4a_hooks = hooks.py
 
 # 构建优化
