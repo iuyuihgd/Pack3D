@@ -24,6 +24,7 @@ jobs:
 
       - name: Build with Buildozer
         run: |
+          cd $GITHUB_WORKSPACE
           buildozer -v android debug
 
       - name: Upload APK
