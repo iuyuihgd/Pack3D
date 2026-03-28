@@ -70,7 +70,11 @@ jobs:
               libreadline-dev \
               libbz2-dev \
               openjdk-11-jdk \
-              libltdl-dev
+              libltdl-dev \
+              libxml2-dev \
+              libxslt1-dev \
+              libjpeg-dev \
+              libpng-dev
           
           echo "✅ 系统依赖安装完成"
 
@@ -101,49 +105,123 @@ jobs:
           echo "🚀 开始构建 Pack3D APK..."
           cd $GITHUB_WORKSPACE
           
-          # 检查配置文件
-          echo "📄 检查配置文件:"
-          ls -la buildozer.spec
+          # 1. 检查环境
+          echo "=== 环境检查 ==="
+          echo "当前目录: $(pwd)"
+          echo "Python 版本: $(python --version)"
+          echo "Pip 版本: $(pip --version)"
+          echo "Buildozer 版本:"
+          buildozer --version || echo "Buildozer 不可用"
+          echo ""
           
-          # 显示 Buildozer 版本
-          echo "🔧 Buildozer 版本:"
-          buildozer --version
+          # 2. 验证配置文件
+          echo "=== 配置文件验证 ==="
+          if [ ! -f "buildozer.spec" ]; then
+            echo "❌ 错误: 找不到 buildozer.spec 文件"
+            exit 1
+          fi
+          echo "buildozer.spec 存在，大小: $(wc -l < buildozer.spec) 行"
+          echo "补丁文件检查:"
+          ls -la m4_allow_all.ac hooks.py 2>/dev/null || echo "⚠️ 部分补丁文件不存在"
+          echo ""
           
-          echo "🔨 开始构建调试版 APK..."
+          # 3. 创建日志目录
+          mkdir -p build_logs
           
-          # 使用详细模式构建，不使用clean参数
-          yes | buildozer -v android debug
+          # 4. 分步执行构建
+          echo "=== 分步执行构建 ==="
           
-          # 检查构建结果
-          echo "📱 检查生成的 APK 文件:"
-          if ls bin/*.apk 1>/dev/null 2>&1; then
-            echo "✅ APK 构建成功！"
-            echo "生成的文件:"
-            ls -lh bin/*.apk
-            APK_FILE=$(ls bin/*.apk | head -1)
-            echo "主 APK 文件: $APK_FILE"
-            echo "文件大小: $(du -h "$APK_FILE" | cut -f1)"
-          else
-            echo "❌ 未找到 APK 文件，构建可能失败"
-            echo "尝试清理后重新构建..."
+          # 步骤1: 初始化构建环境
+          echo "步骤1: 初始化构建环境..."
+          if [ ! -d ".buildozer" ]; then
+            echo "创建 .buildozer 目录"
+            mkdir -p .buildozer
+          fi
+          
+          # 步骤2: 运行构建并保存完整日志
+          echo "步骤2: 执行 Buildozer 构建..."
+          echo "开始时间: $(date)"
+          
+          # 设置超时（30分钟）并运行构建
+          timeout 1800 buildozer -v android debug 2>&1 | tee build_logs/full_build.log
+          BUILD_STATUS=${PIPESTATUS[0]}
+          
+          echo "结束时间: $(date)"
+          echo "构建退出状态: $BUILD_STATUS"
+          echo ""
+          
+          # 5. 检查构建结果
+          echo "=== 构建结果检查 ==="
+          
+          if [ $BUILD_STATUS -eq 0 ]; then
+            echo "✅ Buildozer 命令执行成功"
             
-            # 手动清理构建目录
-            rm -rf .buildozer/android/platform/build-* 2>/dev/null || true
-            rm -rf .buildozer/android/app 2>/dev/null || true
-            
-            # 第二次尝试构建
-            echo "🔨 第二次尝试构建..."
-            yes | buildozer -v android debug
-            
-            # 再次检查结果
+            # 检查是否生成了 APK
             if ls bin/*.apk 1>/dev/null 2>&1; then
-              echo "✅ 第二次构建成功！"
+              APK_FILE=$(ls bin/*.apk | head -1)
+              echo "✅ APK 文件已生成: $APK_FILE"
+              echo "文件大小: $(du -h "$APK_FILE" | cut -f1)"
               ls -lh bin/*.apk
             else
-              echo "❌ 构建失败，请查看上方错误信息"
-              exit 1
+              echo "⚠️ 构建成功但没有在 bin/ 目录中找到 APK 文件"
+              echo "检查可能的输出位置:"
+              find . -name "*.apk" -type f 2>/dev/null || echo "没有找到任何 .apk 文件"
             fi
+          elif [ $BUILD_STATUS -eq 124 ]; then
+            echo "❌ 构建超时（30分钟）"
+            echo "可能是网络问题或依赖下载过慢"
+          else
+            echo "❌ Buildozer 构建失败，退出码: $BUILD_STATUS"
+            echo ""
+            
+            # 显示错误摘要
+            echo "=== 错误摘要（最后50行）==="
+            tail -50 build_logs/full_build.log
+            echo ""
+            
+            # 尝试查找更具体的错误
+            echo "=== 关键错误信息搜索 ==="
+            grep -n -B5 -A5 -i "error\|fail\|exception\|traceback\|fatal" build_logs/full_build.log | head -100 || echo "没有找到明确的关键字"
           fi
+          
+          # 6. 收集所有日志文件
+          echo "=== 收集日志文件 ==="
+          
+          # 复制各种可能的日志文件
+          cp -f .buildozer/*.log build_logs/ 2>/dev/null || true
+          cp -f .buildozer/android/*.log build_logs/ 2>/dev/null || true
+          find .buildozer -name "*.log" -exec cp {} build_logs/ 2>/dev/null \; || true
+          find .buildozer -name "*.txt" -exec cp {} build_logs/ 2>/dev/null \; || true
+          
+          # 保存环境信息
+          echo "=== 环境信息 ===" > build_logs/environment.txt
+          echo "日期: $(date)" >> build_logs/environment.txt
+          echo "目录: $(pwd)" >> build_logs/environment.txt
+          echo "Python: $(python --version 2>&1)" >> build_logs/environment.txt
+          echo "Buildozer: $(buildozer --version 2>&1)" >> build_logs/environment.txt
+          echo "" >> build_logs/environment.txt
+          echo "文件列表:" >> build_logs/environment.txt
+          ls -la >> build_logs/environment.txt
+          
+          # 显示收集到的日志
+          echo "收集到的日志文件:"
+          find build_logs -type f -name "*.log" -o -name "*.txt" | sort
+          echo ""
+          
+          # 7. 如果构建失败，明确退出
+          if [ $BUILD_STATUS -ne 0 ] && [ $BUILD_STATUS -ne 124 ]; then
+            echo "❌ 构建过程失败"
+            echo "请查看 build_logs/ 目录中的日志文件获取详细信息"
+            exit 1
+          fi
+          
+          if [ $BUILD_STATUS -eq 124 ]; then
+            echo "⚠️ 构建超时，但可能已部分完成"
+            echo "请检查日志文件查看进度"
+            exit 1
+          fi
+          
+          echo "✅ 构建步骤完成"
 
       - name: 上传 APK 文件
         if: success()
@@ -151,6 +229,7 @@ jobs:
         with:
           name: pack3d-apk
           path: bin/*.apk
+          if-no-files-found: error
           retention-days: 7
           
       - name: 上传构建日志
@@ -158,7 +237,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
+          path: build_logs/
+          if-no-files-found: warn
+          retention-days: 7
+          
+      - name: 上传配置文件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: config-files
           path: |
-            .buildozer/*.log
-            .buildozer/android/platform/build-*/build.log
+            buildozer.spec
+            m4_allow_all.ac
+            hooks.py
           retention-days: 7
