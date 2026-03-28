@@ -16,10 +16,18 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install dependencies (包含aidl等系统工具)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libffi-dev libssl-dev
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libffi-dev \
+            libssl-dev \
+            android-sdk-build-tools \
+            android-sdk-platform-tools \
+            aapt \
+            apksigner
           pip install buildozer Cython==0.29.33
 
       - name: Build with Buildozer
