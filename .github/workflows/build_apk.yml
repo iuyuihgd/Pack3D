@@ -1,51 +1,163 @@
-[app]
+name: Build Pack3D APK
 
-# 应用标题
-title = Pack3D
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
-# 应用包名
-package.name = pack3d
-package.domain = org.github
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-# 源文件目录和包含的扩展名
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-# 应用版本
-version = 0.1
+      - name: 创建补丁文件
+        run: |
+          # 创建 m4_allow_all.ac 文件来解决 autoconf 错误
+          cat > m4_allow_all.ac << 'EOF'
+          # 允许所有宏通过 autoconf 检查
+          m4_pattern_allow([^.*$])
+          EOF
+          
+          # 创建 hooks.py 文件用于构建钩子
+          cat > hooks.py << 'EOF'
+          from pythonforandroid.toolchain import logger
+          
+          def pre_build(dist, *args, **kwargs):
+              logger.info("开始构建 Pack3D APK...")
+              logger.info("当前架构: " + str(dist.archs))
+          
+          def post_build(dist, *args, **kwargs):
+              logger.info("Pack3D APK 构建完成！")
+              logger.info("输出目录: " + dist.dist_dir)
+          
+          def post_build_packages(dist, *args, **kwargs):
+              logger.info("所有依赖包已构建完成")
+          EOF
+          
+          echo "✅ 补丁文件已创建:"
+          ls -la m4_allow_all.ac hooks.py
 
-# 依赖包
-requirements = python3,kivy,kivymd,py3dbp,numpy==1.24.3
+      - name: 安装系统构建依赖
+        run: |
+          echo "📦 安装系统依赖..."
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential \
+              cmake \
+              libffi-dev \
+              libssl-dev \
+              autoconf \
+              automake \
+              libtool \
+              pkg-config \
+              git \
+              unzip \
+              wget \
+              zip \
+              zlib1g-dev \
+              libncurses5-dev \
+              libgdbm-dev \
+              libnss3-dev \
+              libsqlite3-dev \
+              libreadline-dev \
+              libbz2-dev \
+              openjdk-11-jdk \
+              libltdl-dev
+          
+          echo "✅ 系统依赖安装完成"
 
-# Android 配置
-android.api = 33
-android.ndk = 25b
-android.minapi = 21
-android.archs = arm64-v8a,armeabi-v7a
-android.sdk = 24
-android.build_tools = 34.0.0
-android.allow_backup = True
-android.use_aapt2 = True
+      - name: 安装 Python 依赖
+        run: |
+          echo "🐍 安装 Python 工具..."
+          python -m pip install --upgrade pip
+          pip install --upgrade setuptools wheel cython==0.29.33 virtualenv
+          pip install buildozer
+          
+          echo "✅ Python 工具安装完成"
 
-# 权限
-android.permissions = INTERNET
+      - name: 清理旧的构建缓存
+        run: |
+          echo "🧹 清理构建缓存..."
+          # 清理本地构建缓存
+          rm -rf .buildozer/android/platform/build-* 2>/dev/null || true
+          rm -rf .buildozer/android/app 2>/dev/null || true
+          
+          # 清理用户目录下的缓存
+          rm -rf ~/.buildozer/android/platform/android-ndk-r25b 2>/dev/null || true
+          rm -rf ~/.buildozer/android/platform/android-sdk-24 2>/dev/null || true
+          
+          echo "✅ 缓存清理完成"
 
-# 修复 autoconf 问题的关键配置
-android.p4a_whitelist = m4_allow_all.ac
-android.p4a_hooks = hooks.py
+      - name: 构建 APK
+        run: |
+          echo "🚀 开始构建 Pack3D APK..."
+          cd $GITHUB_WORKSPACE
+          
+          # 检查配置文件
+          echo "📄 检查配置文件:"
+          ls -la buildozer.spec
+          echo "=== buildozer.spec 内容 ==="
+          cat buildozer.spec
+          echo "=== 结束 ==="
+          
+          # 初始化 Buildozer（如果未初始化）
+          if [ ! -f ".buildozer/config.ini" ]; then
+            echo "⚙️ 初始化 Buildozer..."
+            buildozer init
+          fi
+          
+          # 显示 Buildozer 版本
+          echo "🔧 Buildozer 版本:"
+          buildozer --version
+          
+          # 清理并构建
+          echo "🔨 清理之前的构建..."
+          buildozer android clean
+          
+          echo "🔨 开始构建调试版 APK..."
+          # 自动回答所有许可证问题并详细输出
+          yes | buildozer -v android debug
+          
+          # 检查构建结果
+          echo "📱 检查生成的 APK 文件:"
+          if ls bin/*.apk 1>/dev/null 2>&1; then
+            echo "✅ APK 构建成功！"
+            echo "生成的文件:"
+            ls -lh bin/*.apk
+            APK_FILE=$(ls bin/*.apk | head -1)
+            echo "主 APK 文件: $APK_FILE"
+            echo "文件大小: $(du -h "$APK_FILE" | cut -f1)"
+          else
+            echo "❌ 未找到 APK 文件，构建可能失败"
+            echo "检查 .buildozer 目录:"
+            ls -la .buildozer/
+            echo "检查 bin 目录:"
+            ls -la bin/ 2>/dev/null || echo "bin 目录不存在"
+            exit 1
+          fi
 
-# 构建优化
-android.num_processes = 4
-android.logcat_filters = *:S python:D
-
-# 图标和启动画面
-icon.fg = images/icon.png
-presplash.fg = images/presplash.png
-presplash.background = #FFFFFF
-
-# 日志级别
-log_level = 2
-
-# 构建目录
-build.dir = bin
-bin.dir = bin
+      - name: 上传 APK 文件
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack3d-apk
+          path: bin/*.apk
+          retention-days: 7
+          
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            .buildozer/*.log
+            .buildozer/android/platform/build-*/build.log
+          retention-days: 7
