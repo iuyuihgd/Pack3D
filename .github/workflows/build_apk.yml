@@ -77,53 +77,36 @@ jobs:
           
           echo "✅ 系统依赖安装完成"
 
-      - name: 🔧 手动安装 Android SDK 命令行工具 (CLI Tools)
-        run: |
-          echo "正在手动安装 Android SDK 命令行工具..."
-          
-          # 1. 设置Android SDK路径变量
-          SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-          mkdir -p "$SDK_ROOT"
-          
-          # 2. 下载命令行工具包 (关键修正：使用完整的官方URL)
-          CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
-          CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
-          echo "下载命令行工具包: $CD_TOOLS_URL"
-          
-          # 下载文件，显示进度
-          wget --show-progress -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
-          
-          # 3. 解压到新版SDK要求的目录结构 (关键修正)
-          # 新版本要求：$SDK_ROOT/cmdline-tools/latest/
-          echo "解压并安装到: $SDK_ROOT/cmdline-tools/latest/"
-          unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
-          
-          # 创建目标目录结构
-          mkdir -p "$SDK_ROOT/cmdline-tools"
-          mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
-          
-          # 4. 预接受所有许可证 (避免交互式询问)
-          mkdir -p "$SDK_ROOT/licenses"
-          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
-          
-          # 5. 验证安装并安装必要组件
-          echo "验证安装并安装基本组件..."
-          export ANDROID_SDK_ROOT="$SDK_ROOT"
-          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          
-          if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            echo "✅ sdkmanager 安装成功，路径: $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-            
-            # 安装必要的Android平台工具和构建工具
-            yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-33" "build-tools;34.0.0" > /dev/null 2>&1
-            echo "✅ Android 平台工具和构建工具安装完成"
-          else
-            echo "❌ sdkmanager 安装失败，文件不存在"
-            echo "目录内容:"
-            find "$SDK_ROOT" -type f -name "sdkmanager" 2>/dev/null || echo "未找到sdkmanager"
-            exit 1
-          fi
+      - name: 🔧 安装 Android SDK 命令行工具
+  run: |
+    echo "安装 Android SDK 命令行工具..."
+    SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
+    mkdir -p "$SDK_ROOT"
+
+    # 下载命令行工具包
+    CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
+    CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
+    wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
+
+    # 解压到正确路径：cmdline-tools/latest/
+    unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
+    mkdir -p "$SDK_ROOT/cmdline-tools"
+    mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+
+    # 预接受许可证
+    mkdir -p "$SDK_ROOT/licenses"
+    echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
+    echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
+
+    # 验证安装
+    export ANDROID_SDK_ROOT="$SDK_ROOT"
+    export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+    if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+      echo "✅ sdkmanager 安装成功"
+    else
+      echo "❌ sdkmanager 未找到，请检查安装"
+      exit 1
+    fi
       - name: 安装 Python 构建工具
         run: |
           echo "🐍 安装 Python 构建工具..."
