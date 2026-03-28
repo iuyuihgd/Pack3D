@@ -11,7 +11,7 @@ requirements = python3,kivy,kivymd,py3dbp,numpy
 
 android.api = 33
 android.ndk = 25b
-android.archs = arm64-v8a,armeabi-v7a
+android.archs = arm64-v8a,armeabi-v7a,x86_64  # 新增 x86_64 架构
 
 android.permissions = INTERNET
 android.use_aapt2 = True
