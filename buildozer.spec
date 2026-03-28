@@ -6,7 +6,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
 
-# 依赖包
+# 依赖包（建议先简化测试）
 requirements = python3,kivy,kivymd,py3dbp,numpy==1.24.3
 
 # Android 配置
@@ -19,7 +19,7 @@ android.allow_backup = True
 android.use_aapt2 = True
 android.permissions = INTERNET
 
-# 关键修复配置：解决 autoconf 错误
+# 修复 autoconf 错误的关键配置
 android.whitelist = m4_allow_all.ac
 android.p4a_hooks = hooks.py
 
