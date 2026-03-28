@@ -3,12 +3,12 @@ name: Build Pack3D APK
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # 允许手动触发构建
+  workflow_dispatch: # 允许手动触发构建
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # 使用 Ubuntu 24.04
-    
+    runs-on: ubuntu-24.04 # 使用 Ubuntu 24.04
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -16,7 +16,7 @@ jobs:
       - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: 创建构建补丁文件
         run: |
@@ -78,35 +78,38 @@ jobs:
           echo "✅ 系统依赖安装完成"
 
       - name: 🔧 安装 Android SDK 命令行工具
-  run: |
-    echo "安装 Android SDK 命令行工具..."
-    SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
-    mkdir -p "$SDK_ROOT"
+        run: |
+          echo "安装 Android SDK 命令行工具..."
+          SDK_ROOT="/home/runner/.buildozer/android/platform/android-sdk"
+          mkdir -p "$SDK_ROOT"
 
-    # 下载命令行工具包
-    CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
-    CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
-    wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
+          # 下载命令行工具包 (关键修正：使用完整URL)
+          CD_TOOLS_ZIP="commandlinetools-linux-11076708_latest.zip"
+          CD_TOOLS_URL="https://dl.google.com/android/repository/${CD_TOOLS_ZIP}"
+          echo "正在从以下地址下载: $CD_TOOLS_URL"
+          wget -q "$CD_TOOLS_URL" -O "/tmp/${CD_TOOLS_ZIP}"
 
-    # 解压到正确路径：cmdline-tools/latest/
-    unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
-    mkdir -p "$SDK_ROOT/cmdline-tools"
-    mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          # 解压到正确路径：cmdline-tools/latest/
+          echo "解压并安装到: $SDK_ROOT/cmdline-tools/latest/"
+          unzip -q "/tmp/${CD_TOOLS_ZIP}" -d "/tmp/"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          mv "/tmp/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
 
-    # 预接受许可证
-    mkdir -p "$SDK_ROOT/licenses"
-    echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
-    echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
+          # 预接受许可证
+          mkdir -p "$SDK_ROOT/licenses"
+          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$SDK_ROOT/licenses/android-sdk-license"
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_ROOT/licenses/android-sdk-preview-license"
 
-    # 验证安装
-    export ANDROID_SDK_ROOT="$SDK_ROOT"
-    export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-    if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-      echo "✅ sdkmanager 安装成功"
-    else
-      echo "❌ sdkmanager 未找到，请检查安装"
-      exit 1
-    fi
+          # 验证安装
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          export PATH="$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          if [ -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "✅ sdkmanager 已成功安装于标准路径"
+          else
+            echo "❌ sdkmanager 未在预期路径找到，安装失败。"
+            exit 1
+          fi
+
       - name: 安装 Python 构建工具
         run: |
           echo "🐍 安装 Python 构建工具..."
