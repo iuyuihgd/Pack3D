@@ -2,12 +2,12 @@ name: Build Pack3D APK
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [main]
+  workflow_dispatch:  # 允许手动触发构建
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 明确指定 Ubuntu 24.04
     
     steps:
       - name: 检出代码
@@ -18,40 +18,50 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 创建补丁文件 (解决 autoconf 错误)
+      - name: 创建构建补丁文件
         run: |
-          # 创建 m4_allow_all.ac 文件来解决 autoconf 的宏检查错误
+          # 1. 创建解决 autoconf 宏检查错误的补丁文件
+          echo "创建 m4_allow_all.ac 文件..."
           cat > m4_allow_all.ac << 'EOF'
           # 允许所有宏通过 autoconf 检查
           m4_pattern_allow([^.*$])
           EOF
           
-          # 创建 hooks.py 文件用于构建钩子 (可选，用于调试)
+          # 2. 创建构建钩子文件（可选，用于调试）
+          echo "创建 hooks.py 文件..."
           cat > hooks.py << 'EOF'
           from pythonforandroid.toolchain import logger
           
           def pre_build(dist, *args, **kwargs):
               logger.info("开始构建 Pack3D APK...")
-              logger.info("当前架构: " + str(dist.archs))
+              logger.info(f"目标架构: {dist.archs}")
           
           def post_build(dist, *args, **kwargs):
               logger.info("Pack3D APK 构建完成！")
-              logger.info("输出目录: " + dist.dist_dir)
           EOF
           
-          echo "✅ 补丁文件已创建"
+          echo "✅ 补丁文件创建完成"
           ls -la m4_allow_all.ac hooks.py
 
-      - name: 安装系统构建依赖
+      - name: 安装系统构建依赖（修复版）
         run: |
-          echo "📦 安装系统依赖..."
-          sudo apt-get update
+          echo "📦 开始安装系统构建依赖..."
+          echo "Ubuntu 版本: $(lsb_release -ds)"
+          echo ""
+          
+          # 1. 更新软件源（使用更稳定的源）
+          echo "步骤1: 更新软件源列表..."
+          sudo apt-get update -y
+          echo ""
+          
+          # 2. 安装核心构建工具（确保这些包在 Ubuntu 24.04 中存在）
+          echo "步骤2: 安装核心构建工具..."
           sudo apt-get install -y \
               build-essential \
               cmake \
               libffi-dev \
               libssl-dev \
-              autoconf \        # 解决 autoconf 错误的必需工具
+              autoconf \
               automake \
               libtool \
               pkg-config \
@@ -60,89 +70,165 @@ jobs:
               wget \
               zip \
               zlib1g-dev \
-              openjdk-11-jdk \  # Android 构建需要的 Java
+              openjdk-11-jdk-headless \
               libltdl-dev
+          
+          # 3. 尝试安装其他可能有用的库（但非必需）
+          echo "步骤3: 安装可选库..."
+          sudo apt-get install -y \
+              libncurses-dev \
+              libgdbm-dev \
+              libnss3-dev \
+              libsqlite3-dev \
+              libreadline-dev \
+              libbz2-dev \
+              libffi-dev \
+              libxml2-dev \
+              libxslt1-dev \
+              libjpeg-dev \
+              libpng-dev
+          
+          # 4. 验证关键工具安装成功
+          echo ""
+          echo "✅ 关键工具验证:"
+          echo "autoconf: $(autoconf --version | head -1)"
+          echo "automake: $(automake --version | head -1)"
+          echo "libtool: $(libtool --version | head -1)"
+          echo "Java: $(java -version 2>&1 | head -1)"
+          echo "Git: $(git --version)"
           
           echo "✅ 系统依赖安装完成"
 
       - name: 安装 Python 构建工具
         run: |
-          echo "🐍 安装 Python 工具..."
+          echo "🐍 安装 Python 构建工具..."
+          
+          # 1. 升级 pip
           python -m pip install --upgrade pip
-          pip install --upgrade setuptools wheel cython==0.29.33
-          pip install "buildozer<1.6.0"  # 使用兼容版本
+          
+          # 2. 安装构建必需的工具
+          pip install --upgrade setuptools wheel cython==0.29.33 virtualenv
+          
+          # 3. 安装指定版本的 Buildozer（避免最新版兼容性问题）
+          pip install "buildozer<1.6.0"
+          
+          # 4. 验证安装
+          echo "✅ 安装验证:"
+          echo "Buildozer 版本: $(buildozer --version 2>/dev/null || echo '无法获取版本')"
+          echo "Python 版本: $(python --version)"
+          echo "Pip 版本: $(pip --version)"
           
           echo "✅ Python 工具安装完成"
 
       - name: 清理旧的构建缓存
         run: |
-          echo "🧹 清理构建缓存..."
-          # 清理本地构建缓存
+          echo "🧹 清理旧的构建缓存..."
+          
+          # 清理本地构建目录
           rm -rf .buildozer/android/platform/build-* 2>/dev/null || true
           rm -rf .buildozer/android/app 2>/dev/null || true
+          rm -rf bin/ 2>/dev/null || true
+          
+          # 创建必要的目录
+          mkdir -p bin
+          mkdir -p .buildozer
           
           echo "✅ 缓存清理完成"
 
-      - name: 构建 APK (关键修复步骤)
+      - name: 构建 APK（关键修复步骤）
         run: |
           echo "🚀 开始构建 Pack3D APK..."
           cd $GITHUB_WORKSPACE
           
-          # 1. 环境检查
-          echo "=== 环境检查 ==="
+          # 1. 环境验证
+          echo "=== 环境验证 ==="
           echo "工作目录: $(pwd)"
-          echo "Buildozer 版本:"
-          buildozer --version || echo "Buildozer 不可用"
+          echo "当前文件:"
+          ls -la
           echo ""
           
-          # 2. 验证配置文件
-          echo "=== 配置文件验证 ==="
+          # 2. 配置文件检查
+          echo "=== 配置文件检查 ==="
           if [ ! -f "buildozer.spec" ]; then
-            echo "❌ 错误: 找不到 buildozer.spec 文件"
+            echo "❌ 错误: 找不到 buildozer.spec 配置文件"
             exit 1
           fi
-          echo "✅ buildozer.spec 存在"
+          echo "✅ 找到 buildozer.spec 文件"
+          echo "配置摘要:"
+          grep -E "^(title|package\.|version|requirements|android\.)" buildozer.spec | head -20
           echo ""
           
-          # 3. 执行构建 (关键修复：添加 --accept-license 参数)
-          echo "=== 开始执行构建 ==="
+          # 3. 执行构建（关键修复：添加 --accept-license 自动接受许可证）
+          echo "=== 执行 Buildozer 构建 ==="
           echo "开始时间: $(date)"
-          
-          # 关键修改：使用 --accept-license 自动接受 Android SDK 许可证
-          # 这解决了日志中“Accept? (y/N):”交互阻塞的问题
-          yes | buildozer -v android debug -- --accept-license 2>&1 | tee build_output.log
-          BUILD_STATUS=${PIPESTATUS[0]}
-          
-          echo "结束时间: $(date)"
-          echo "构建退出状态: $BUILD_STATUS"
+          echo "注意: 此步骤可能需要 20-40 分钟，具体取决于网络和依赖下载速度"
           echo ""
           
-          # 4. 检查构建结果
-          echo "=== 构建结果检查 ==="
+          # 关键修复参数：--accept-license 自动接受 Android SDK 许可证
+          # 设置超时 45 分钟，防止无限等待
+          timeout 2700 buildozer -v android debug -- --accept-license 2>&1 | tee build_output.log
           
-          if [ $BUILD_STATUS -eq 0 ]; then
-            echo "✅ Buildozer 命令执行成功"
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "构建结束时间: $(date)"
+          echo "构建退出代码: $BUILD_EXIT_CODE"
+          echo ""
+          
+          # 4. 处理构建结果
+          echo "=== 构建结果处理 ==="
+          
+          if [ $BUILD_EXIT_CODE -eq 0 ]; then
+            echo "🎉 Buildozer 构建命令执行成功！"
             
-            # 检查是否生成了 APK
-            if ls bin/*.apk 1>/dev/null 2>&1; then
-              APK_FILE=$(ls bin/*.apk | head -1)
-              echo "🎉 APK 构建成功！"
-              echo "文件: $APK_FILE"
-              echo "大小: $(du -h "$APK_FILE" | cut -f1)"
-              ls -lh bin/*.apk
+            # 查找生成的 APK 文件
+            APK_FILES=$(find . -name "*.apk" -type f 2>/dev/null || true)
+            
+            if [ -n "$APK_FILES" ]; then
+              echo "✅ 找到 APK 文件:"
+              echo "$APK_FILES" | while read apk; do
+                echo "  - $apk ($(du -h "$apk" | cut -f1))"
+              done
+              
+              # 复制到 bin 目录（如果不在那里）
+              mkdir -p bin
+              echo "$APK_FILES" | while read apk; do
+                if [[ ! "$apk" =~ ^\./bin/ ]]; then
+                  cp "$apk" bin/
+                  echo "  已复制到: bin/$(basename "$apk")"
+                fi
+              done
+              
+              echo ""
+              echo "📱 APK 文件列表:"
+              ls -lh bin/*.apk 2>/dev/null || echo "  (bin 目录中没有 APK 文件)"
             else
-              echo "⚠️ 构建成功但没有在 bin/ 目录中找到 APK 文件"
-              echo "检查其他可能位置:"
-              find . -name "*.apk" -type f 2>/dev/null || echo "没有找到任何 .apk 文件"
+              echo "⚠️  构建成功但未找到 .apk 文件"
+              echo "检查可能的输出:"
+              find . -name "*.apk" -o -name "*.aab" 2>/dev/null || echo "  没有找到任何应用包文件"
             fi
+            
+          elif [ $BUILD_EXIT_CODE -eq 124 ]; then
+            echo "⏰ 构建超时（45分钟）"
+            echo "可能原因:"
+            echo "  1. 网络缓慢，依赖下载超时"
+            echo "  2. 编译某些库（如 numpy）耗时过长"
+            echo "建议:"
+            echo "  1. 检查网络连接"
+            echo "  2. 考虑简化 requirements（如先只保留 python3,kivy）"
+            echo "  3. 增加超时时间"
+            exit 1
           else
-            echo "❌ Buildozer 构建失败，退出码: $BUILD_STATUS"
+            echo "❌ Buildozer 构建失败，退出码: $BUILD_EXIT_CODE"
             echo ""
-            echo "=== 错误摘要（最后30行）==="
-            tail -30 build_output.log
+            echo "=== 错误摘要（最后 50 行）==="
+            tail -50 build_output.log
+            echo ""
+            echo "=== 关键错误搜索 ==="
+            grep -n -B3 -A3 -i "error\|fail\|exception\|traceback\|无法找到\|不能安装" build_output.log | head -30 || echo "未找到明确错误关键词"
             echo ""
             exit 1
           fi
+          
+          echo "✅ 构建步骤完成"
 
       - name: 上传生成的 APK
         if: success()
@@ -152,14 +238,43 @@ jobs:
           path: bin/*.apk
           if-no-files-found: error
           retention-days: 7
-          
-      - name: 上传构建日志 (用于调试)
-        if: always()
+        env:
+          ACTIONS_STEP_DEBUG: true
+
+      - name: 上传构建日志
+        if: always()  # 无论成功失败都上传日志
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
           path: |
             build_output.log
             .buildozer/*.log
+            .buildozer/android/platform/build-*/build.log
           if-no-files-found: warn
           retention-days: 7
+          
+      - name: 上传配置文件
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: config-files
+          path: |
+            buildozer.spec
+            m4_allow_all.ac
+            hooks.py
+          retention-days: 7
+          
+      - name: 构建状态汇总
+        if: always()
+        run: |
+          echo "=== 构建状态汇总 ==="
+          echo "作业状态: ${{ job.status }}"
+          echo "构建时间: $(date)"
+          echo "工作流: ${{ github.workflow }}"
+          echo "运行 ID: ${{ github.run_id }}"
+          
+          if [ -f "build_output.log" ]; then
+            echo "构建日志大小: $(wc -l < build_output.log) 行"
+            echo "最后构建阶段:"
+            grep -i "building\|compiling\|creating" build_output.log | tail -5 || echo "无法获取构建阶段"
+          fi
